@@ -15,7 +15,6 @@ Note: No custom CSS is used so that Streamlit native light and dark themes rende
 matching IIT Kharagpur Virtual Labs conventions (Aim / Theory / Procedure / Simulation / Quiz / References).
 """
 
-import os
 import re
 import math
 import collections
@@ -733,14 +732,14 @@ def render_simulation_section():
             {"Rank": i + 1, "Document": r["title"], "Score": r["tfidf_score"], "Length": r["length"]}
             for i, r in enumerate(tfidf_sorted)
         ])
-        st.dataframe(tfidf_df, use_container_width=True, hide_index=True)
+        st.dataframe(tfidf_df, width="stretch", hide_index=True)
     with col_bm:
         st.caption("BM25 ranking")
         bm25_df = pd.DataFrame([
             {"Rank": i + 1, "Document": r["title"], "Score": r["bm25_score"], "Length": r["length"]}
             for i, r in enumerate(bm25_sorted)
         ])
-        st.dataframe(bm25_df, use_container_width=True, hide_index=True)
+        st.dataframe(bm25_df, width="stretch", hide_index=True)
 
     st.subheader("Score Comparison Chart")
     top_n = min(10, len(results))
@@ -758,7 +757,7 @@ def render_simulation_section():
         margin=dict(l=20, r=20, t=40, b=100),
         xaxis_tickangle=-30
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     if ranking_output["unique_query_terms"] and bm25_sorted:
         st.subheader(f"Term Contribution Breakdown (Top BM25 Document: {bm25_sorted[0]['title']})")
@@ -777,7 +776,7 @@ def render_simulation_section():
                 height=320,
                 margin=dict(l=20, r=20, t=40, b=20)
             )
-            st.plotly_chart(contrib_fig, use_container_width=True)
+            st.plotly_chart(contrib_fig, width="stretch")
         else:
             st.info("None of the query terms appear in the top-ranked BM25 document.")
 
@@ -787,7 +786,7 @@ def render_simulation_section():
 
     with col_log1:
         st.caption("Capture the current query, parameters, and results into your session trial table:")
-        if st.button("Record Current Trial", type="primary", use_container_width=True):
+        if st.button("Record Current Trial", type="primary", width="stretch"):
             trial_record = {
                 "Trial #": len(st.session_state["trials"]) + 1,
                 "Query": query,
@@ -801,21 +800,21 @@ def render_simulation_section():
             st.session_state["trials"].append(trial_record)
             st.toast(f"Trial #{trial_record['Trial #']} successfully saved!")
 
-        if st.button("Clear Logged Trials", use_container_width=True):
+        if st.button("Clear Logged Trials", width="stretch"):
             st.session_state["trials"] = []
             st.toast("Trial log cleared.")
 
     with col_log2:
         if st.session_state["trials"]:
             df_trials = pd.DataFrame(st.session_state["trials"])
-            st.dataframe(df_trials, use_container_width=True, hide_index=True)
+            st.dataframe(df_trials, width="stretch", hide_index=True)
             csv_data = df_trials.to_csv(index=False).encode('utf-8')
             st.download_button(
                 "Download Trials as CSV",
                 data=csv_data,
                 file_name="bm25_tfidf_trials.csv",
                 mime="text/csv",
-                use_container_width=True
+                width="stretch"
             )
         else:
             st.info("No trials recorded yet. Click 'Record Current Trial' to begin collecting experimental data.")
@@ -905,7 +904,7 @@ def render_report_section():
     st.write(f"**Quiz Score:** {st.session_state.get('quiz_score', 0)} / {len(QUIZ_QUESTIONS)}")
 
     if not trials_df.empty:
-        st.dataframe(trials_df, hide_index=True, use_container_width=True)
+        st.dataframe(trials_df, hide_index=True, width="stretch")
     else:
         st.info("Note: You have not recorded any trials in the Simulation tab yet. Your report will indicate 0 trials.")
 
@@ -919,33 +918,18 @@ def render_report_section():
         student_notes=student_notes
     )
 
-    os.makedirs("static", exist_ok=True)
-    with open("static/lab_report.pdf", "wb") as f:
-        f.write(pdf_bytes)
-    with open("lab_report.pdf", "wb") as f:
-        f.write(pdf_bytes)
-
     st.divider()
     st.subheader("Download Official Lab Report (.pdf)")
 
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        st.link_button(
-            "Open / Download PDF Document",
-            url="/app/static/lab_report.pdf",
-            type="primary",
-            use_container_width=True
-        )
-
-    with col_btn2:
-        st.download_button(
-            label="Download lab_report.pdf",
-            data=pdf_bytes,
-            file_name="lab_report.pdf",
-            mime="application/pdf",
-            key="stream_pdf_btn",
-            use_container_width=True
-        )
+    st.download_button(
+        label="Download lab_report.pdf",
+        data=pdf_bytes,
+        file_name="lab_report.pdf",
+        mime="application/pdf",
+        key="stream_pdf_btn",
+        type="primary",
+        width="stretch"
+    )
 
 
 # ======================================================================================
