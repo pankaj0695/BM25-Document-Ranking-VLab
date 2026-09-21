@@ -2,7 +2,7 @@
 
 **Experiment Number:** 5
 **Experiment Title:** BM25 Based Document Ranking
-**Division:** D12A
+**Division:** D17A
 **Roll Numbers:** 21–25
 
 **Deployed App:** [https://bm25-document-ranking-vlab-pankaj.streamlit.app/](https://bm25-document-ranking-vlab-pankaj.streamlit.app/)

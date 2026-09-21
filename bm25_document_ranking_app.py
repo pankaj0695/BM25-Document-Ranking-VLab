@@ -4,17 +4,20 @@ Implements the BM25 probabilistic ranking function from first principles and
 compares its ranking behaviour against the classic TF-IDF vector-space model
 (cosine similarity) on a shared document corpus and query.
 
-Structure follows the standard 4-section virtual-lab template:
-  1. Theory: Concepts (TF-IDF, BM25), objectives, procedure, key terms, references.
-  2. Simulation: Interactive corpus/query/parameter controls, dual ranking engine,
-     comparison plots, term-contribution breakdown, and trial logger.
-  3. Quiz: Self-grading conceptual assessment with instant feedback.
-  4. Report Generation: Student info, recorded trials, observations, and downloadable PDF report.
+Structure follows the IIT Kharagpur Virtual Labs sidebar convention:
+  1. Purpose: The aim and learning objectives of the experiment.
+  2. Theory: Concepts (TF-IDF, BM25), algorithm pipeline diagram, applications, procedure, key terms.
+  3. Simulation: Interactive corpus/query/parameter controls, dual ranking engine,
+     comparison plots, term-contribution breakdown, behind-the-scenes visualizations, and trial logger.
+  4. Quiz: Self-grading conceptual assessment with instant feedback.
+  5. Report Generation: Student info, recorded trials, observations, and downloadable PDF report.
+  6. Certificate: Personalized PDF certificate, gated on completing the simulation + quiz.
+  7. References: Citations with direct links to the source papers.
 
-Note: No custom CSS is used so that Streamlit native light and dark themes render seamlessly,
-matching IIT Kharagpur Virtual Labs conventions (Aim / Theory / Procedure / Simulation / Quiz / References).
+Note: No custom CSS is used so that Streamlit native light and dark themes render seamlessly.
 """
 
+import io
 import re
 import math
 import collections
@@ -25,6 +28,66 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from fpdf import FPDF
+
+try:
+    from pypdf import PdfReader
+    PYPDF_AVAILABLE = True
+except ImportError:
+    PYPDF_AVAILABLE = False
+
+try:
+    from docx import Document as DocxDocument
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
+
+# ======================================================================================
+# 0. GLOSSARY (hover definitions for key terms)
+# ======================================================================================
+
+GLOSSARY = {
+    "TF-IDF": "Term Frequency times Inverse Document Frequency — a classic vector-space scoring "
+              "formula that weights each term by how often it appears in a document and how rare "
+              "it is across the collection.",
+    "BM25": "Best Matching 25 — a probabilistic ranking function that improves on TF-IDF with "
+            "term-frequency saturation and document-length normalization.",
+    "TF": "Term Frequency — the number of times a term appears in a single document.",
+    "IDF": "Inverse Document Frequency — a measure of how rare a term is across the whole "
+           "document collection.",
+    "cosine similarity": "The cosine of the angle between two vectors; measures how similar "
+                          "their direction is, independent of their magnitude.",
+    "k1": "BM25 parameter that controls how quickly the contribution of a repeated term "
+          "saturates (diminishing returns).",
+    "b": "BM25 parameter that controls how strongly a document's length is penalized relative "
+         "to the collection average.",
+    "avgdl": "The average document length (in tokens) across the entire corpus.",
+    "saturate": "The effect where repeating a term more and more adds progressively less to the "
+                "score, instead of growing without limit.",
+    "vector space model": "A model that represents documents and queries as vectors of term "
+                           "weights in a shared multi-dimensional space.",
+    "tokenization": "The process of splitting raw text into individual words (tokens) for "
+                     "processing.",
+    "stopwords": "Very common words (like 'the', 'is', 'and') that are filtered out before "
+                 "scoring because they carry little meaning.",
+    "embedding": "A numeric vector representation of a document or query, positioned in a "
+                 "shared space so that similar items land close together.",
+    "rank correlation": "A statistic (Spearman's rho) measuring how similarly two different "
+                         "rankings order the same set of items.",
+    "document-length normalization": "Adjusting a document's score based on whether it is "
+                                      "longer or shorter than the collection average, so long "
+                                      "documents don't win purely by being long.",
+}
+
+
+def gterm(label: str, key: str = None) -> str:
+    """Wraps `label` in an HTML <abbr> tag so hovering over it shows a short glossary definition."""
+    definition = GLOSSARY.get(key or label, "").replace('"', "&quot;")
+    return (
+        f'<abbr title="{definition}" '
+        f'style="text-decoration:underline dotted; text-underline-offset:3px; cursor:help;">'
+        f'{label}</abbr>'
+    )
 
 
 # ======================================================================================
@@ -43,37 +106,37 @@ EXPERIMENT_CONFIG = {
 }
 
 THEORY_CONTENT = {
-    "background": """
+    "background": f"""
 ### Overview & Objective
 Given a collection of documents and a user query, a ranking function assigns each document a
 relevance score so the most relevant documents can be shown first. This experiment implements
-two such functions — **TF-IDF with cosine similarity** and **BM25** — and lets you compare how
-they rank the same documents for the same query.
+two such functions — **{gterm('TF-IDF')} with {gterm('cosine similarity')}** and **{gterm('BM25')}**
+— and lets you compare how they rank the same documents for the same query.
 
 ### TF-IDF Vector Space Model
-Each document (and the query) is represented as a vector over the vocabulary. Every term's weight
-combines **Term Frequency (TF)** — how often the term occurs in that document — with
-**Inverse Document Frequency (IDF)** — how rare the term is across the whole collection:
+Each document (and the query) is represented as a vector over the vocabulary (a {gterm('vector space model', 'vector space model')}).
+Every term's weight combines **{gterm('Term Frequency (TF)', 'TF')}** — how often the term occurs in that document — with
+**{gterm('Inverse Document Frequency (IDF)', 'IDF')}** — how rare the term is across the whole collection:
 
 > weight(t, d) = tf(t, d) × idf(t),  where idf(t) = log(N / df(t)) + 1
 
-Relevance is then measured as the **cosine similarity** between the query vector and each document
+Relevance is then measured as the **{gterm('cosine similarity')}** between the query vector and each document
 vector — the cosine of the angle between them, independent of document length. A key limitation of
 the classic (raw-count) TF-IDF formulation used here is that term frequency has **no saturation**:
 repeating a query term many more times keeps increasing a document's score with no diminishing returns.
 
 ### BM25 Ranking Function
-BM25 ("Best Matching 25") is a probabilistic ranking function that scores a document D against a
+{gterm('BM25')} ("Best Matching 25") is a probabilistic ranking function that scores a document D against a
 query Q as:
 
 > score(D, Q) = Σ IDF(qᵢ) · [ f(qᵢ, D) · (k1 + 1) ] / [ f(qᵢ, D) + k1 · (1 − b + b · |D| / avgdl) ]
 
 where f(qᵢ, D) is the frequency of query term qᵢ in D, |D| is the document's length in tokens, and
-avgdl is the average document length across the collection. Two tunable parameters shape the score:
+{gterm('avgdl')} is the average document length across the collection. Two tunable parameters shape the score:
 
-- **k1** (typically 1.2 – 2.0) controls how quickly additional occurrences of a term **saturate** —
+- **{gterm('k1', 'k1')}** (typically 1.2 – 2.0) controls how quickly additional occurrences of a term **{gterm('saturate', 'saturate')}** —
   beyond a point, repeating a term contributes progressively less to the score.
-- **b** (0 to 1) controls **document-length normalization** — how much a document's score is
+- **{gterm('b', 'b')}** (0 to 1) controls **{gterm('document-length normalization', 'document-length normalization')}** — how much a document's score is
   penalized for being longer than the collection average (b = 1: full normalization, b = 0: none).
 
 ### Why BM25 Often Ranks Better than Plain TF-IDF
@@ -114,13 +177,41 @@ counts is prone to.
     }
 }
 
+BM25_APPLICATIONS = [
+    ("Web & Enterprise Search", "BM25 is the default relevance-scoring function in Elasticsearch, "
+     "OpenSearch, Apache Solr, and Apache Lucene — the engines behind most modern site search, "
+     "intranet search, and log/analytics search deployments."),
+    ("Retrieval-Augmented Generation (RAG)", "Large-language-model pipelines commonly use BM25 as a "
+     "fast lexical first-stage retriever (often alongside a dense/embedding retriever) to fetch "
+     "candidate passages that are then fed into the LLM as context."),
+    ("Digital Libraries & Academic Search", "Scholarly search systems and digital library catalogues "
+     "use BM25 to rank papers, articles, and citations against free-text queries."),
+    ("E-Commerce Product Search", "Online marketplaces rank product listings against a shopper's "
+     "search query using BM25-style scoring, often blended with popularity or sales signals."),
+    ("Legal & Patent Retrieval", "Legal research platforms and patent search tools rely on BM25 to "
+     "surface relevant case law, statutes, or prior art from large full-text document collections."),
+    ("Open-Domain Question Answering", "QA systems use BM25 as the 'retriever' stage in a "
+     "retrieve-then-read architecture, narrowing millions of documents down to a small candidate set "
+     "before a reader model extracts the answer."),
+]
+
 REFERENCES_CONTENT = [
-    "S. E. Robertson and K. Sparck Jones, 'Relevance Weighting of Search Terms', Journal of the "
-    "American Society for Information Science, 1976.",
-    "S. E. Robertson and S. Walker, 'Some Simple Effective Approximations to the 2-Poisson Model for "
-    "Probabilistic Weighted Retrieval', SIGIR, 1994.",
-    "C. D. Manning, P. Raghavan, and H. Schütze, 'Introduction to Information Retrieval', Cambridge "
-    "University Press, 2008 (Chapters 6 & 11: Scoring, Term Weighting, and Probabilistic IR)."
+    {
+        "citation": "S. E. Robertson and K. Sparck Jones, 'Relevance Weighting of Search Terms', "
+                    "Journal of the American Society for Information Science, 1976.",
+        "url": "https://www.semanticscholar.org/paper/Relevance-weighting-of-search-terms-Robertson-Jones/f6e3e57567e9803718623ec088cd7fea65cfbc9d"
+    },
+    {
+        "citation": "S. E. Robertson and S. Walker, 'Some Simple Effective Approximations to the "
+                    "2-Poisson Model for Probabilistic Weighted Retrieval', SIGIR, 1994.",
+        "url": "https://www.staff.city.ac.uk/~sbrp622/papers/robertson_walker_sigir94.pdf"
+    },
+    {
+        "citation": "C. D. Manning, P. Raghavan, and H. Schütze, 'Introduction to Information "
+                    "Retrieval', Cambridge University Press, 2008 (Chapters 6 & 11: Scoring, Term "
+                    "Weighting, and Probabilistic IR).",
+        "url": "https://nlp.stanford.edu/IR-book/information-retrieval-book.html"
+    },
 ]
 
 COMPARISON_TABLE = [
@@ -468,6 +559,89 @@ def parse_custom_documents(raw_text: str) -> list:
     return [{"id": i + 1, "title": f"Custom Document {i + 1}", "text": chunk} for i, chunk in enumerate(chunks)]
 
 
+def extract_text_from_upload(uploaded_file) -> str:
+    """Extracts plain text from an uploaded PDF or DOCX file object. Returns '' on failure."""
+    name = (uploaded_file.name or "").lower()
+    try:
+        if name.endswith(".pdf"):
+            if not PYPDF_AVAILABLE:
+                return ""
+            reader = PdfReader(io.BytesIO(uploaded_file.getvalue()))
+            return "\n".join((page.extract_text() or "") for page in reader.pages).strip()
+        elif name.endswith(".docx"):
+            if not DOCX_AVAILABLE:
+                return ""
+            doc = DocxDocument(io.BytesIO(uploaded_file.getvalue()))
+            return "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def build_embedding_projection(documents: list, query: str, retrieved_ids: set) -> dict:
+    """
+    Builds a lightweight 2D 'embedding' of every document and the query by projecting their
+    TF-IDF vectors down using SVD (a PCA-like technique), purely for visualization purposes.
+    Reuses the same IDF weighting as the TF-IDF ranking engine above.
+    """
+    doc_tokens = [tokenize(d["text"]) for d in documents]
+    doc_counts = [collections.Counter(toks) for toks in doc_tokens]
+    n_docs = len(documents)
+
+    df = collections.Counter()
+    for counts in doc_counts:
+        for term in counts:
+            df[term] += 1
+
+    def idf_tfidf(term: str) -> float:
+        dfi = df.get(term, 0)
+        if dfi == 0:
+            return 0.0
+        return math.log(n_docs / dfi) + 1.0
+
+    query_tokens = tokenize(query)
+    query_counts = collections.Counter(query_tokens)
+
+    vocab = sorted(df.keys())
+    if not vocab:
+        return {"points": []}
+    vocab_index = {term: i for i, term in enumerate(vocab)}
+
+    matrix = np.zeros((n_docs + 1, len(vocab)))
+    for i, counts in enumerate(doc_counts):
+        for term, tf in counts.items():
+            matrix[i, vocab_index[term]] = tf * idf_tfidf(term)
+    for term, tf in query_counts.items():
+        if term in vocab_index:
+            matrix[n_docs, vocab_index[term]] = tf * idf_tfidf(term)
+
+    # Center the matrix and project onto its top-2 singular vectors (PCA-like 2D embedding).
+    centered = matrix - matrix.mean(axis=0, keepdims=True)
+    try:
+        u, s, _vt = np.linalg.svd(centered, full_matrices=False)
+        coords_2d = u[:, :2] * s[:2]
+    except np.linalg.LinAlgError:
+        coords_2d = np.zeros((n_docs + 1, 2))
+
+    if coords_2d.shape[1] < 2:
+        coords_2d = np.pad(coords_2d, ((0, 0), (0, 2 - coords_2d.shape[1])))
+
+    points = []
+    for i, doc in enumerate(documents):
+        points.append({
+            "id": doc["id"],
+            "title": doc["title"],
+            "x": float(coords_2d[i, 0]),
+            "y": float(coords_2d[i, 1]),
+            "retrieved": doc["id"] in retrieved_ids
+        })
+    points.append({
+        "id": "query", "title": "QUERY", "x": float(coords_2d[n_docs, 0]),
+        "y": float(coords_2d[n_docs, 1]), "retrieved": False
+    })
+    return {"points": points}
+
+
 # ======================================================================================
 # 4. LAB REPORT PDF EXPORTER
 # ======================================================================================
@@ -601,30 +775,203 @@ def generate_pdf_report(student_name: str, student_id: str, date_str: str,
     return bytes(pdf.output())
 
 
+def generate_certificate_pdf(student_name: str, quiz_score: int, quiz_total: int, date_str: str) -> bytes:
+    """Builds a landscape A4 'Certificate of Completion' PDF for a student who finished the lab."""
+    pdf = FPDF(orientation="L", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=False)
+    pdf.add_page()
+
+    page_w, page_h = 297, 210
+    perc = int((quiz_score / quiz_total) * 100) if quiz_total else 0
+
+    # Decorative outer and inner border.
+    pdf.set_draw_color(30, 58, 138)
+    pdf.set_line_width(1.2)
+    pdf.rect(8, 8, page_w - 16, page_h - 16)
+    pdf.set_draw_color(37, 99, 235)
+    pdf.set_line_width(0.4)
+    pdf.rect(12, 12, page_w - 24, page_h - 24)
+
+    pdf.set_text_color(30, 58, 138)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_xy(0, 24)
+    pdf.cell(page_w, 8, "KGIRS VIRTUAL LABORATORY", align="C")
+
+    pdf.set_text_color(15, 23, 42)
+    pdf.set_font("Helvetica", "B", 30)
+    pdf.set_xy(0, 40)
+    pdf.cell(page_w, 16, "Certificate of Completion", align="C")
+
+    pdf.set_draw_color(203, 213, 225)
+    pdf.set_line_width(0.3)
+    pdf.line(page_w / 2 - 40, 60, page_w / 2 + 40, 60)
+
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_text_color(71, 85, 105)
+    pdf.set_xy(0, 72)
+    pdf.cell(page_w, 8, "This is to certify that", align="C")
+
+    clean_name = (student_name or "Student").replace("$", "").replace("\\", "")
+    pdf.set_font("Helvetica", "B", 24)
+    pdf.set_text_color(30, 58, 138)
+    pdf.set_xy(0, 84)
+    pdf.cell(page_w, 14, clean_name, align="C")
+    pdf.set_draw_color(30, 58, 138)
+    pdf.set_line_width(0.4)
+    pdf.line(page_w / 2 - 55, 100, page_w / 2 + 55, 100)
+
+    pdf.set_font("Helvetica", "", 12.5)
+    pdf.set_text_color(51, 65, 85)
+    pdf.set_xy(35, 108)
+    pdf.multi_cell(
+        page_w - 70, 7,
+        f"has successfully completed the Virtual Laboratory experiment on "
+        f"\"{EXPERIMENT_CONFIG['title']}\", performing the interactive simulation and completing the "
+        f"concept assessment quiz with a final score of {quiz_score} / {quiz_total} ({perc}%).",
+        align="C"
+    )
+
+    pdf.set_font("Helvetica", "B", 12)
+    if perc >= 50:
+        pdf.set_text_color(16, 185, 129)
+    else:
+        pdf.set_text_color(239, 68, 68)
+    pdf.set_xy(0, 138)
+    pdf.cell(page_w, 8, f"Quiz Score: {quiz_score} / {quiz_total}  ({perc}%)", align="C")
+
+    pdf.set_font("Helvetica", "I", 10)
+    pdf.set_text_color(100, 116, 139)
+    pdf.set_xy(0, 150)
+    pdf.cell(page_w, 6, f"Date of Completion: {date_str}", align="C")
+
+    pdf.set_draw_color(180, 180, 180)
+    pdf.set_line_width(0.3)
+    pdf.line(45, 178, 110, 178)
+    pdf.set_xy(45, 180)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(65, 5, "Student Signature", align="C")
+
+    pdf.line(page_w - 110, 178, page_w - 45, 178)
+    pdf.set_xy(page_w - 110, 180)
+    pdf.cell(65, 5, "Instructor / Lab Coordinator", align="C")
+
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(148, 163, 184)
+    pdf.set_xy(0, page_h - 20)
+    pdf.cell(page_w, 5, EXPERIMENT_CONFIG["title"] + " | KGIRS Virtual Lab", align="C")
+
+    return bytes(pdf.output())
+
+
+def is_lab_completed() -> bool:
+    """A student has completed the lab once they've recorded at least one simulation trial and
+    submitted the quiz."""
+    has_trial = bool(st.session_state.get("trials"))
+    has_quiz = bool(st.session_state.get("quiz_submitted", False))
+    return has_trial and has_quiz
+
+
 # ======================================================================================
-# 5. SECTION RENDERERS: THEORY, SIMULATION, QUIZ, REPORT
+# 5. SECTION RENDERERS: PURPOSE, THEORY, SIMULATION, QUIZ, REPORT, CERTIFICATE, REFERENCES
 # ======================================================================================
 
-def render_theory_section():
-    """Renders Section 1: Aim, Theory, Background, Objectives, Procedure, and References."""
-    st.header("Aim")
+def render_purpose_section():
+    """Renders the Purpose section: the objective of this virtual lab experiment."""
+    st.header("Purpose")
     st.write(
         "To implement the BM25 probabilistic ranking function and empirically compare its document "
         "ranking behaviour against the classic TF-IDF vector-space model (cosine similarity)."
     )
-
-    st.divider()
-    st.header("Theoretical Framework & Background")
-    st.markdown(THEORY_CONTENT["background"])
-
     st.subheader("Learning Objectives")
     for i, obj in enumerate(EXPERIMENT_CONFIG["objectives"]):
         st.write(f"- **Goal {i+1}**: {obj}")
+
+
+def render_algorithm_diagram():
+    """Draws a flowchart illustrating how a query and corpus flow through the ranking pipeline."""
+    fig = go.Figure()
+
+    boxes = [
+        {"id": "input", "x": 0.5, "y": 0, "w": 1.7, "h": 0.85,
+         "text": "Document Corpus<br>+ Search Query", "color": "#e0f2fe", "border": "#0284c7"},
+        {"id": "tok", "x": 2.7, "y": 0, "w": 1.9, "h": 0.85,
+         "text": "Tokenization &<br>Stopword Removal", "color": "#e0f2fe", "border": "#0284c7"},
+        {"id": "freq", "x": 4.9, "y": 0, "w": 2.0, "h": 0.85,
+         "text": "Term / Document<br>Frequency Counting", "color": "#e0f2fe", "border": "#0284c7"},
+        {"id": "tfidf", "x": 7.3, "y": 1.05, "w": 2.3, "h": 0.85,
+         "text": "TF-IDF Weighting →<br>Cosine Similarity", "color": "#dbeafe", "border": "#2563eb"},
+        {"id": "bm25", "x": 7.3, "y": -1.05, "w": 2.3, "h": 0.85,
+         "text": "BM25 Scoring<br>(k1 saturation, b length-norm)", "color": "#fef3c7", "border": "#d97706"},
+        {"id": "rank", "x": 9.9, "y": 0, "w": 2.0, "h": 0.85,
+         "text": "Ranked Document<br>List (per method)", "color": "#dcfce7", "border": "#16a34a"},
+    ]
+
+    for b in boxes:
+        fig.add_shape(
+            type="rect",
+            x0=b["x"] - b["w"] / 2, x1=b["x"] + b["w"] / 2,
+            y0=b["y"] - b["h"] / 2, y1=b["y"] + b["h"] / 2,
+            line=dict(color=b["border"], width=2),
+            fillcolor=b["color"]
+        )
+        fig.add_annotation(
+            x=b["x"], y=b["y"], text=b["text"], showarrow=False,
+            font=dict(size=12, color="#0f172a"), align="center"
+        )
+
+    arrows = [
+        ("input", "tok"), ("tok", "freq"),
+        ("freq", "tfidf"), ("freq", "bm25"),
+        ("tfidf", "rank"), ("bm25", "rank"),
+    ]
+    box_by_id = {b["id"]: b for b in boxes}
+    for src, dst in arrows:
+        b1, b2 = box_by_id[src], box_by_id[dst]
+        x0 = b1["x"] + b1["w"] / 2
+        x1 = b2["x"] - b2["w"] / 2
+        y0 = b1["y"] if b1["y"] == b2["y"] else b1["y"] + (0.15 if b2["y"] > b1["y"] else -0.15)
+        y1 = b2["y"]
+        fig.add_annotation(
+            x=x1, y=y1, ax=x0, ay=y0, xref="x", yref="y", axref="x", ayref="y",
+            showarrow=True, arrowhead=3, arrowsize=1.2, arrowwidth=1.8, arrowcolor="#64748b"
+        )
+
+    fig.update_xaxes(visible=False, range=[-0.5, 11.5])
+    fig.update_yaxes(visible=False, range=[-1.9, 1.9], scaleanchor="x", scaleratio=1)
+    fig.update_layout(
+        height=340, margin=dict(l=10, r=10, t=10, b=10),
+        plot_bgcolor="white", showlegend=False
+    )
+    st.plotly_chart(fig, width="stretch")
+
+
+def render_theory_section():
+    """Renders the Theory section: Background, algorithm diagram, applications, procedure, key terms."""
+    st.header("Theoretical Framework & Background")
+    st.markdown(THEORY_CONTENT["background"], unsafe_allow_html=True)
+    st.caption("Tip: terms underlined with dots (e.g. TF-IDF, BM25, k1, b) show a short definition on hover.")
 
     st.divider()
     st.subheader("TF-IDF vs. BM25 at a Glance")
     comparison_df = pd.DataFrame(COMPARISON_TABLE, columns=["Aspect", "TF-IDF (cosine similarity)", "BM25"])
     st.table(comparison_df)
+
+    st.divider()
+    st.subheader("How the Algorithm Works: Ranking Pipeline")
+    st.write(
+        "The diagram below traces how a query and document corpus flow through tokenization, "
+        "frequency counting, and finally the two parallel scoring paths — TF-IDF cosine similarity "
+        "and BM25 — that this lab compares."
+    )
+    render_algorithm_diagram()
+
+    st.divider()
+    st.subheader("Applications of BM25")
+    st.write("BM25 is not just a textbook formula — it is the working relevance engine behind many "
+              "real-world retrieval systems:")
+    for name, desc in BM25_APPLICATIONS:
+        st.write(f"- **{name}**: {desc}")
 
     st.divider()
     st.subheader("Experimental Procedure")
@@ -639,9 +986,14 @@ def render_theory_section():
         )
         st.table(var_df)
 
-    with st.expander("References"):
-        for ref in REFERENCES_CONTENT:
-            st.write(f"- {ref}")
+
+def render_references_section():
+    """Renders the References section: citations with direct links to the source papers."""
+    st.header("References")
+    st.write("The theoretical background in this virtual lab is drawn from the following foundational "
+              "papers and texts:")
+    for ref in REFERENCES_CONTENT:
+        st.markdown(f"- {ref['citation']} [↗ Link]({ref['url']})")
 
 
 def render_simulation_section():
@@ -654,7 +1006,7 @@ def render_simulation_section():
 
     corpus_mode = st.radio(
         "Document Source",
-        options=["Built-in Sample Corpus", "Custom Documents"],
+        options=["Built-in Sample Corpus", "Custom Documents", "Upload PDF / DOCX Files"],
         horizontal=True
     )
 
@@ -664,7 +1016,7 @@ def render_simulation_section():
             for doc in documents:
                 st.write(f"**{doc['id']}. {doc['title']}** — {doc['text']}")
         default_query = DEFAULT_QUERY
-    else:
+    elif corpus_mode == "Custom Documents":
         st.caption(
             "Paste your own documents below, separated by a **blank line** between each document "
             "(at least 2 documents are required)."
@@ -677,6 +1029,33 @@ def render_simulation_section():
         )
         documents = parse_custom_documents(custom_text)
         default_query = ""
+    else:
+        st.caption(
+            "Upload two or more PDF or DOCX files. Each file becomes one document; its text is "
+            "extracted automatically and used for ranking (requires the `pypdf` and `python-docx` "
+            "packages)."
+        )
+        uploaded_files = st.file_uploader(
+            "Upload PDF / DOCX Documents",
+            type=["pdf", "docx"],
+            accept_multiple_files=True
+        )
+        documents = []
+        if uploaded_files:
+            for i, uf in enumerate(uploaded_files):
+                extracted = extract_text_from_upload(uf)
+                if extracted:
+                    documents.append({"id": i + 1, "title": uf.name, "text": extracted})
+                else:
+                    st.warning(f"Could not extract text from **{uf.name}** — it may be empty, "
+                               f"image-only, or an unsupported file.")
+            if documents:
+                with st.expander("Preview extracted text"):
+                    for doc in documents:
+                        preview = doc["text"][:400] + ("..." if len(doc["text"]) > 400 else "")
+                        st.write(f"**{doc['id']}. {doc['title']}**")
+                        st.caption(preview)
+        default_query = ""
 
     query = st.text_input("Search Query", value=default_query)
 
@@ -686,13 +1065,15 @@ def render_simulation_section():
         k1 = st.slider(
             "k1 (Term-Frequency Saturation)",
             min_value=cfg["k1_min"], max_value=cfg["k1_max"],
-            value=cfg["k1_default"], step=cfg["k1_step"]
+            value=cfg["k1_default"], step=cfg["k1_step"],
+            help=GLOSSARY["k1"]
         )
     with col_b:
         b = st.slider(
             "b (Document-Length Normalization)",
             min_value=cfg["b_min"], max_value=cfg["b_max"],
-            value=cfg["b_default"], step=cfg["b_step"]
+            value=cfg["b_default"], step=cfg["b_step"],
+            help=GLOSSARY["b"]
         )
 
     if len(documents) < 2:
@@ -720,10 +1101,131 @@ def render_simulation_section():
     with m2:
         st.metric("Top BM25 Document", bm25_sorted[0]["title"][:22] if bm25_sorted else "N/A")
     with m3:
-        st.metric("avgdl (tokens)", ranking_output["avgdl"])
+        st.metric("avgdl (tokens)", ranking_output["avgdl"], help=GLOSSARY["avgdl"])
     with m4:
-        st.metric("Rank Correlation (ρ)", correlation)
+        st.metric("Rank Correlation (ρ)", correlation, help=GLOSSARY["rank correlation"])
 
+    st.divider()
+    st.subheader("Behind the Scenes: How the Query is Actually Matched")
+    st.caption(
+        "A live look at what the ranking engine does internally: tokenizing your query, matching it "
+        "against every document, funneling down to the top results, and projecting documents and the "
+        "query into a shared 2D space."
+    )
+
+    top_k = min(5, len(bm25_sorted))
+    retrieved_ids = {r["id"] for r in bm25_sorted[:top_k]}
+
+    viz_tab1, viz_tab2, viz_tab3 = st.tabs([
+        "1. Tokenization & Term Matching", "2. Retrieval Funnel", "3. Document/Query Embedding Space"
+    ])
+
+    with viz_tab1:
+        st.write("**Tokenized query terms** (after lowercasing, stopword removal, and cleanup):")
+        query_terms = ranking_output["unique_query_terms"]
+        if query_terms:
+            chip_html = " ".join(
+                f'<span style="background:#2563eb; color:white; padding:3px 10px; border-radius:12px; '
+                f'margin:3px; display:inline-block; font-size:0.85em;">{t}</span>'
+                for t in query_terms
+            )
+            st.markdown(chip_html, unsafe_allow_html=True)
+        else:
+            st.info("No meaningful query terms remain after tokenization/stopword removal.")
+
+        st.write("")
+        st.write("**Term-Document Match Heatmap** — which query terms appear in which documents, and "
+                  "how many times (raw term frequency):")
+        if query_terms and results:
+            heat_docs = [r["title"][:28] for r in results]
+            heat_z = []
+            for term in query_terms:
+                row = []
+                for doc in documents:
+                    toks = tokenize(doc["text"])
+                    row.append(collections.Counter(toks).get(term, 0))
+                heat_z.append(row)
+            heat_fig = go.Figure(data=go.Heatmap(
+                z=heat_z, x=heat_docs, y=query_terms,
+                colorscale="Blues", showscale=True,
+                hovertemplate="Doc: %{x}<br>Term: %{y}<br>Frequency: %{z}<extra></extra>"
+            ))
+            heat_fig.update_layout(
+                title="Query-Term Frequency per Document",
+                height=max(260, 60 * len(query_terms) + 120),
+                margin=dict(l=20, r=20, t=40, b=100),
+                xaxis_tickangle=-30
+            )
+            st.plotly_chart(heat_fig, width="stretch")
+
+    with viz_tab2:
+        candidates = [r for r in results if any(r["term_contributions"].get(t, 0) > 0 for t in query_terms)] \
+            if query_terms else []
+        funnel_fig = go.Figure(go.Funnel(
+            y=["Total Documents in Corpus", "Candidates (≥1 matching term)", f"Top-{top_k} Retrieved"],
+            x=[len(documents), len(candidates), top_k],
+            textinfo="value+percent initial",
+            marker={"color": ["#93c5fd", "#3b82f6", "#1e3a8a"]}
+        ))
+        funnel_fig.update_layout(
+            title="Retrieval Funnel: From Full Corpus to Top-K Results",
+            height=360, margin=dict(l=20, r=100, t=40, b=20)
+        )
+        st.plotly_chart(funnel_fig, width="stretch")
+        st.caption(
+            f"Out of **{len(documents)}** documents in the corpus, **{len(candidates)}** contain at "
+            f"least one query term, and the top **{top_k}** (by BM25 score) are treated as retrieved."
+        )
+
+    with viz_tab3:
+        st.write(
+            "Each document and the query are represented as TF-IDF vectors and projected down to 2D "
+            f"(via SVD) so their relative positions can be visualized. Documents in the **top-{top_k} "
+            "retrieved** set are highlighted and connected to the query with a dotted line."
+        )
+        projection = build_embedding_projection(documents, query, retrieved_ids)
+        points = projection["points"]
+        if points:
+            query_pt = next(p for p in points if p["id"] == "query")
+            other_pts = [p for p in points if p["id"] != "query" and not p["retrieved"]]
+            retrieved_pts = [p for p in points if p["id"] != "query" and p["retrieved"]]
+
+            emb_fig = go.Figure()
+            for p in retrieved_pts:
+                emb_fig.add_trace(go.Scatter(
+                    x=[query_pt["x"], p["x"]], y=[query_pt["y"], p["y"]],
+                    mode="lines", line=dict(color="#94a3b8", dash="dot", width=1),
+                    showlegend=False, hoverinfo="skip"
+                ))
+            if other_pts:
+                emb_fig.add_trace(go.Scatter(
+                    x=[p["x"] for p in other_pts], y=[p["y"] for p in other_pts],
+                    mode="markers", name="Other Documents",
+                    marker=dict(size=10, color="#cbd5e1", line=dict(width=1, color="#94a3b8")),
+                    text=[p["title"] for p in other_pts], hovertemplate="%{text}<extra></extra>"
+                ))
+            if retrieved_pts:
+                emb_fig.add_trace(go.Scatter(
+                    x=[p["x"] for p in retrieved_pts], y=[p["y"] for p in retrieved_pts],
+                    mode="markers", name=f"Top-{top_k} Retrieved",
+                    marker=dict(size=14, color="#2563eb", line=dict(width=1.5, color="#1e3a8a")),
+                    text=[p["title"] for p in retrieved_pts], hovertemplate="%{text}<extra></extra>"
+                ))
+            emb_fig.add_trace(go.Scatter(
+                x=[query_pt["x"]], y=[query_pt["y"]], mode="markers+text", name="Query",
+                marker=dict(size=18, color="#f97316", symbol="star", line=dict(width=1.5, color="#7c2d12")),
+                text=["Query"], textposition="top center", hoverinfo="skip"
+            ))
+            emb_fig.update_layout(
+                title="2D Projection of Document & Query TF-IDF Vectors",
+                height=460, margin=dict(l=20, r=20, t=40, b=20),
+                xaxis_title="Component 1", yaxis_title="Component 2"
+            )
+            st.plotly_chart(emb_fig, width="stretch")
+        else:
+            st.info("Not enough vocabulary to build an embedding projection yet.")
+
+    st.divider()
     st.subheader("Ranked Results: TF-IDF vs. BM25")
     col_t, col_bm = st.columns(2)
     with col_t:
@@ -932,6 +1434,112 @@ def render_report_section():
     )
 
 
+def render_certificate_section():
+    """Renders the Certificate section: eligibility gate, full-name capture, and PDF generation."""
+    st.header("Certificate of Completion")
+    st.write(
+        "Generate a personalized certificate confirming that you completed this virtual lab "
+        "experiment and your quiz score."
+    )
+
+    has_trial = bool(st.session_state.get("trials"))
+    has_quiz = bool(st.session_state.get("quiz_submitted", False))
+
+    if not (has_trial and has_quiz):
+        st.warning(
+            "You haven't completed the virtual lab yet. Please complete the following before a "
+            "certificate can be generated:"
+        )
+        st.write(f"- {'✅' if has_trial else '❌'} Run at least one trial in the **Simulation** "
+                 f"section and click 'Record Current Trial'.")
+        st.write(f"- {'✅' if has_quiz else '❌'} Complete and submit the **Quiz**.")
+        st.info("Once both steps are done, come back here to generate your certificate.")
+        return
+
+    st.success("You have completed the simulation and the quiz — you're eligible for a certificate!")
+
+    quiz_score = st.session_state.get("quiz_score", 0)
+    quiz_total = len(QUIZ_QUESTIONS)
+    perc = int((quiz_score / quiz_total) * 100) if quiz_total else 0
+
+    m1, m2 = st.columns(2)
+    with m1:
+        st.metric("Quiz Score", f"{quiz_score} / {quiz_total}")
+    with m2:
+        st.metric("Percentage", f"{perc}%")
+
+    st.divider()
+    st.subheader("Enter Your Full Name")
+    st.caption("Your full name will appear on the certificate exactly as entered below.")
+    full_name = st.text_input(
+        "Full Name",
+        value=st.session_state.get("certificate_full_name", ""),
+        placeholder="e.g. Pankaj Gupta"
+    )
+    st.session_state["certificate_full_name"] = full_name
+
+    generate_clicked = st.button(
+        "Generate Certificate", type="primary", width="stretch", disabled=not full_name.strip()
+    )
+    if not full_name.strip():
+        st.caption("Enter your full name above to enable certificate generation.")
+
+    if generate_clicked:
+        st.session_state["certificate_generated"] = True
+
+    if st.session_state.get("certificate_generated") and full_name.strip():
+        cert_date = datetime.now().strftime("%B %d, %Y")
+
+        st.divider()
+        st.subheader("Certificate Preview")
+        st.markdown(
+            f"""
+<div style="border: 3px solid #1e3a8a; border-radius: 6px; padding: 32px; text-align: center;
+            background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);">
+    <div style="font-size: 0.85em; letter-spacing: 2px; color: #1e3a8a; font-weight: 600;">
+        KGIRS VIRTUAL LABORATORY
+    </div>
+    <div style="font-size: 2em; font-weight: 700; color: #0f172a; margin: 10px 0;">
+        Certificate of Completion
+    </div>
+    <div style="width: 80px; height: 2px; background: #cbd5e1; margin: 12px auto;"></div>
+    <div style="font-size: 1em; color: #475569;">This is to certify that</div>
+    <div style="font-size: 1.6em; font-weight: 700; color: #1e3a8a; margin: 10px 0;">
+        {full_name.strip()}
+    </div>
+    <div style="width: 160px; height: 2px; background: #1e3a8a; margin: 6px auto 16px;"></div>
+    <div style="font-size: 1em; color: #334155; max-width: 640px; margin: 0 auto; line-height: 1.6;">
+        has successfully completed the Virtual Laboratory experiment on
+        <b>"{EXPERIMENT_CONFIG['title']}"</b>, performing the interactive simulation and completing
+        the concept assessment quiz with a final score of <b>{quiz_score} / {quiz_total} ({perc}%)</b>.
+    </div>
+    <div style="margin-top: 18px; font-size: 0.9em; color: #64748b;">
+        Date of Completion: {cert_date}
+    </div>
+</div>
+""",
+            unsafe_allow_html=True
+        )
+
+        cert_bytes = generate_certificate_pdf(
+            student_name=full_name.strip(),
+            quiz_score=quiz_score,
+            quiz_total=quiz_total,
+            date_str=cert_date
+        )
+
+        st.divider()
+        st.download_button(
+            label="Download Certificate (.pdf)",
+            data=cert_bytes,
+            file_name=f"certificate_{full_name.strip().replace(' ', '_')}.pdf",
+            mime="application/pdf",
+            key="certificate_pdf_btn",
+            type="primary",
+            width="stretch"
+        )
+
+
 # ======================================================================================
 # 6. MAIN ENTRYPOINT & NAVIGATION
 # ======================================================================================
@@ -954,6 +1562,10 @@ def init_session_state():
         }
     if "student_notes" not in st.session_state:
         st.session_state["student_notes"] = ""
+    if "certificate_full_name" not in st.session_state:
+        st.session_state["certificate_full_name"] = ""
+    if "certificate_generated" not in st.session_state:
+        st.session_state["certificate_generated"] = False
 
 
 def main():
@@ -969,7 +1581,7 @@ def main():
 
     section = st.sidebar.radio(
         "Lab Navigator",
-        options=["Theory", "Simulation", "Quiz", "Report Generation"]
+        options=["Purpose", "Theory", "Simulation", "Quiz", "Report Generation", "Certificate", "References"]
     )
 
     st.sidebar.divider()
@@ -979,8 +1591,12 @@ def main():
     if st.session_state.get("quiz_submitted", False):
         st.sidebar.write(f"- **Quiz Score:** `{st.session_state.get('quiz_score', 0)} / {len(QUIZ_QUESTIONS)}`")
     st.sidebar.write(f"- **Trials Recorded:** {len(st.session_state.get('trials', []))}")
+    cert_status = "Eligible" if is_lab_completed() else "Not yet eligible"
+    st.sidebar.write(f"- **Certificate:** {cert_status}")
 
-    if section == "Theory":
+    if section == "Purpose":
+        render_purpose_section()
+    elif section == "Theory":
         render_theory_section()
     elif section == "Simulation":
         render_simulation_section()
@@ -988,6 +1604,10 @@ def main():
         render_quiz_section()
     elif section == "Report Generation":
         render_report_section()
+    elif section == "Certificate":
+        render_certificate_section()
+    elif section == "References":
+        render_references_section()
 
 
 if __name__ == "__main__":
