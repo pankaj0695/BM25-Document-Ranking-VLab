@@ -20,6 +20,7 @@ Note: No custom CSS is used so that Streamlit native light and dark themes rende
 import io
 import re
 import math
+import random
 import collections
 from datetime import datetime
 
@@ -29,6 +30,245 @@ import plotly.graph_objects as go
 import streamlit as st
 from fpdf import FPDF
 
+def load_custom_css():
+    st.markdown(
+        """
+        <style>
+
+        /* =========================================================
+           THEME-AWARE GLOBAL STYLING
+           ========================================================= */
+
+        :root {
+            --app-bg: var(--background-color);
+            --app-text: var(--text-color);
+            --app-secondary-text: var(--secondary-text-color);
+            --app-border: var(--secondary-background-color);
+            --app-card: var(--secondary-background-color);
+        }
+
+
+        /* =========================================================
+           MAIN APPLICATION
+           ========================================================= */
+
+        .main .block-container {
+            max-width: 1400px;
+            padding-top: 2rem;
+            padding-bottom: 3rem;
+        }
+
+        .main {
+            background: var(--app-bg);
+        }
+
+
+        /* =========================================================
+           MAIN TEXT
+           ========================================================= */
+
+        .main h1,
+        .main h2,
+        .main h3,
+        .main h4,
+        .main h5,
+        .main h6,
+        .main p,
+        .main li,
+        .main label,
+        .main .stMarkdown {
+            color: var(--app-text);
+        }
+
+
+        /* =========================================================
+           SIDEBAR
+           ========================================================= */
+
+        [data-testid="stSidebar"] {
+            background: #0f172a;
+        }
+
+        [data-testid="stSidebar"] > div:first-child {
+            padding-top: 1.5rem;
+        }
+
+
+        /* Sidebar text */
+
+        [data-testid="stSidebar"] h1,
+        [data-testid="stSidebar"] h2,
+        [data-testid="stSidebar"] h3,
+        [data-testid="stSidebar"] p,
+        [data-testid="stSidebar"] label,
+        [data-testid="stSidebar"] .stMarkdown {
+            color: #f8fafc !important;
+        }
+
+
+        /* =========================================================
+           SIDEBAR NAVIGATION
+           ========================================================= */
+
+        [data-testid="stSidebar"] [data-testid="stRadio"] {
+            margin-top: 1rem;
+        }
+
+        [data-testid="stSidebar"] [data-testid="stRadio"] label {
+            display: flex;
+            align-items: center;
+
+            width: 100%;
+
+            padding: 11px 14px;
+            margin: 5px 0;
+
+            border-radius: 10px;
+
+            background: transparent;
+
+            transition:
+                background 0.2s ease,
+                transform 0.2s ease;
+
+            cursor: pointer;
+        }
+
+
+        /* Hover */
+
+        [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {
+            background: rgba(255, 255, 255, 0.08);
+            transform: translateX(3px);
+        }
+
+
+        /* Hide radio circles */
+
+        [data-testid="stSidebar"] [data-testid="stRadio"] input {
+            display: none !important;
+        }
+
+        [data-testid="stSidebar"] [data-baseweb="radio"] > div:first-child {
+            display: none !important;
+        }
+
+
+        /* Navigation text */
+
+        [data-testid="stSidebar"] [data-testid="stRadio"] label p {
+            margin: 0 !important;
+            color: #e5e7eb !important;
+            font-size: 0.92rem;
+            font-weight: 500;
+        }
+
+
+        /* Active navigation */
+
+        [data-testid="stSidebar"] [data-testid="stRadio"] label:has(
+            input:checked
+        ) {
+            background: rgba(59, 130, 246, 0.18);
+        }
+
+
+        /* =========================================================
+           SIDEBAR DIVIDER
+           ========================================================= */
+
+        [data-testid="stSidebar"] hr {
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+
+        /* =========================================================
+           BUTTONS
+           ========================================================= */
+
+        .stButton > button,
+        .stFormSubmitButton > button {
+            border-radius: 10px;
+            min-height: 42px;
+            font-weight: 650;
+        }
+
+
+        /* =========================================================
+           QUIZ
+           ========================================================= */
+
+        .quiz-question-number {
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+
+            color: #60a5fa;
+
+            font-size: 0.8rem;
+            font-weight: 750;
+
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .quiz-question-text {
+            margin-bottom: 0.8rem;
+
+            color: var(--app-text);
+
+            font-size: 1.08rem;
+            font-weight: 650;
+
+            line-height: 1.55;
+        }
+
+
+        /* =========================================================
+           METRIC CARDS
+           ========================================================= */
+
+        [data-testid="stMetric"] {
+            background: var(--app-card);
+
+            border: 1px solid var(--app-border);
+            border-radius: 12px;
+
+            padding: 1rem;
+        }
+
+
+        /* =========================================================
+           EXPANDERS
+           ========================================================= */
+
+        [data-testid="stExpander"] {
+            border: 1px solid var(--app-border);
+            border-radius: 12px;
+        }
+
+
+        /* =========================================================
+           DATAFRAME
+           ========================================================= */
+
+        [data-testid="stDataFrame"] {
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+
+        /* =========================================================
+           ALERTS
+           ========================================================= */
+
+        [data-testid="stAlert"] {
+            border-radius: 10px;
+        }
+
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 try:
     from pypdf import PdfReader
     PYPDF_AVAILABLE = True
@@ -306,7 +546,7 @@ how all any both each few more most other some such no nor not only own same so 
 will just don should now which who whom
 """.split())
 
-
+QUIZ_DISPLAY_COUNT = 10
 QUIZ_QUESTIONS = [
     {
         "id": 1,
@@ -447,6 +687,525 @@ QUIZ_QUESTIONS = [
         "answer_index": 1,
         "explanation": "Length normalization matters most when document lengths vary widely; b closer to 1 "
                        "more strongly discounts long documents relative to the corpus average."
+    },
+        {
+        "id": 11,
+        "question": "What does TF (Term Frequency) represent in a document?",
+        "options": [
+            "A) The number of documents containing the term",
+            "B) The number of times the term occurs in a particular document",
+            "C) The total number of terms in the corpus",
+            "D) The average length of all documents"
+        ],
+        "answer_index": 1,
+        "explanation": "Term Frequency represents how many times a particular term occurs within a specific document."
+    },
+
+    {
+        "id": 12,
+        "question": "What does DF (Document Frequency) represent?",
+        "options": [
+            "A) The number of times a term appears in one document",
+            "B) The number of documents in the collection containing the term",
+            "C) The total number of tokens in the corpus",
+            "D) The number of query terms"
+        ],
+        "answer_index": 1,
+        "explanation": "Document Frequency is the number of documents in the collection that contain a particular term."
+    },
+
+    {
+        "id": 13,
+        "question": "In the TF-IDF formula used in this experiment, what happens to IDF when a term occurs in many documents?",
+        "options": [
+            "A) IDF generally decreases",
+            "B) IDF becomes infinitely large",
+            "C) IDF always becomes zero",
+            "D) IDF increases linearly with document frequency"
+        ],
+        "answer_index": 0,
+        "explanation": "A term appearing in many documents is less discriminative, so its IDF value becomes smaller."
+    },
+
+    {
+        "id": 14,
+        "question": "What does a high IDF value generally indicate about a term?",
+        "options": [
+            "A) The term is extremely common",
+            "B) The term appears in nearly every document",
+            "C) The term is relatively rare across the document collection",
+            "D) The term has been removed as a stopword"
+        ],
+        "answer_index": 2,
+        "explanation": "Rare terms provide more distinguishing information and therefore receive higher IDF values."
+    },
+
+    {
+        "id": 15,
+        "question": "Why is cosine similarity used in the TF-IDF implementation?",
+        "options": [
+            "A) To compare the angle between document and query vectors",
+            "B) To count only the number of documents",
+            "C) To calculate document length",
+            "D) To remove all query terms"
+        ],
+        "answer_index": 0,
+        "explanation": "Cosine similarity measures the similarity in direction between the query vector and document vector."
+    },
+
+    {
+        "id": 16,
+        "question": "What is the main effect of cosine normalization in the vector-space model?",
+        "options": [
+            "A) It makes all documents contain the same words",
+            "B) It reduces the direct effect of vector magnitude",
+            "C) It removes IDF from the calculation",
+            "D) It makes every similarity score equal to zero"
+        ],
+        "answer_index": 1,
+        "explanation": "Cosine similarity divides the dot product by the magnitudes of the vectors, reducing the direct effect of vector length."
+    },
+
+    {
+        "id": 17,
+        "question": "What does BM25 stand for in this experiment?",
+        "options": [
+            "A) Binary Matching 25",
+            "B) Best Matching 25",
+            "C) Boolean Matching 25",
+            "D) Basic Model 25"
+        ],
+        "answer_index": 1,
+        "explanation": "BM25 is commonly referred to as Best Matching 25, a probabilistic information-retrieval ranking function."
+    },
+
+    {
+        "id": 18,
+        "question": "Which two parameters are specifically tunable in the BM25 implementation used here?",
+        "options": [
+            "A) k1 and b",
+            "B) TF and IDF",
+            "C) DF and TF",
+            "D) avgdl and vocabulary size"
+        ],
+        "answer_index": 0,
+        "explanation": "The implementation exposes k1 for term-frequency saturation and b for document-length normalization."
+    },
+
+    {
+        "id": 19,
+        "question": "What happens to the contribution of repeated terms in BM25 as their frequency becomes very large?",
+        "options": [
+            "A) It increases without any limitation",
+            "B) It eventually shows diminishing returns",
+            "C) It immediately becomes zero",
+            "D) It becomes independent of term frequency"
+        ],
+        "answer_index": 1,
+        "explanation": "BM25 applies term-frequency saturation, meaning additional occurrences contribute progressively less."
+    },
+
+    {
+        "id": 20,
+        "question": "What does a larger k1 generally allow in BM25?",
+        "options": [
+            "A) Additional occurrences of a term to continue contributing for longer before saturation",
+            "B) Document length to become irrelevant",
+            "C) IDF to be removed",
+            "D) All documents to receive the same score"
+        ],
+        "answer_index": 0,
+        "explanation": "A larger k1 makes the saturation curve less aggressive, allowing repeated occurrences to have more influence before diminishing returns dominate."
+    },
+
+    {
+        "id": 21,
+        "question": "What is the role of b in the BM25 formula?",
+        "options": [
+            "A) It controls document-length normalization",
+            "B) It controls the number of documents",
+            "C) It controls tokenization",
+            "D) It controls the vocabulary size"
+        ],
+        "answer_index": 0,
+        "explanation": "The parameter b controls how strongly document length relative to avgdl affects the BM25 score."
+    },
+
+    {
+        "id": 22,
+        "question": "What happens when BM25 uses b = 0?",
+        "options": [
+            "A) Document-length normalization is disabled",
+            "B) Term frequency is disabled",
+            "C) IDF is disabled",
+            "D) Every document receives a score of zero"
+        ],
+        "answer_index": 0,
+        "explanation": "With b = 0, the document-length normalization component no longer changes the score based on document length."
+    },
+
+    {
+        "id": 23,
+        "question": "What happens when b approaches 1?",
+        "options": [
+            "A) Length normalization becomes stronger",
+            "B) Term frequency becomes zero",
+            "C) IDF disappears",
+            "D) All documents become the same length"
+        ],
+        "answer_index": 0,
+        "explanation": "A larger b gives greater importance to document-length normalization relative to the average document length."
+    },
+
+    {
+        "id": 24,
+        "question": "What does avgdl represent in BM25?",
+        "options": [
+            "A) Average query length",
+            "B) Average document length in the collection",
+            "C) Average number of unique terms in the query",
+            "D) Average IDF value"
+        ],
+        "answer_index": 1,
+        "explanation": "avgdl is the average number of tokens across the documents in the corpus."
+    },
+
+    {
+        "id": 25,
+        "question": "Why does BM25 use the ratio |D| / avgdl?",
+        "options": [
+            "A) To compare a document's length with the average document length",
+            "B) To calculate the number of query terms",
+            "C) To remove stopwords",
+            "D) To calculate cosine similarity"
+        ],
+        "answer_index": 0,
+        "explanation": "The ratio tells BM25 whether a document is longer or shorter than the average document in the collection."
+    },
+
+    {
+        "id": 26,
+        "question": "If a document is much longer than avgdl, what effect can BM25's length normalization have?",
+        "options": [
+            "A) It can reduce the document's score contribution",
+            "B) It always increases the score",
+            "C) It removes every query term",
+            "D) It makes the document impossible to rank"
+        ],
+        "answer_index": 0,
+        "explanation": "When b is positive, documents substantially longer than avgdl receive a stronger normalization effect."
+    },
+
+    {
+        "id": 27,
+        "question": "Why can BM25 reduce the effect of keyword stuffing compared with raw TF-IDF?",
+        "options": [
+            "A) BM25 ignores all repeated terms",
+            "B) BM25 combines term-frequency saturation with document-length normalization",
+            "C) BM25 does not use term frequency",
+            "D) BM25 only considers document titles"
+        ],
+        "answer_index": 1,
+        "explanation": "BM25 limits the benefit of excessive term repetition through saturation and also accounts for document length."
+    },
+
+    {
+        "id": 28,
+        "question": "In the experiment, what is the purpose of comparing TF-IDF and BM25 on the same corpus and query?",
+        "options": [
+            "A) To compare how the two ranking methods order the same documents",
+            "B) To train a neural network",
+            "C) To remove all documents from the corpus",
+            "D) To calculate only document length"
+        ],
+        "answer_index": 0,
+        "explanation": "Using the same corpus and query allows the ranking behaviour of TF-IDF and BM25 to be compared directly."
+    },
+
+    {
+        "id": 29,
+        "question": "What does a ranking function primarily do in information retrieval?",
+        "options": [
+            "A) Assign relevance scores and order documents",
+            "B) Permanently delete irrelevant documents",
+            "C) Convert every document into an image",
+            "D) Train a classification model"
+        ],
+        "answer_index": 0,
+        "explanation": "A ranking function scores documents with respect to a query and orders them according to their estimated relevance."
+    },
+
+    {
+        "id": 30,
+        "question": "What is the purpose of tokenization in this experiment?",
+        "options": [
+            "A) Split text into individual tokens for processing",
+            "B) Calculate Spearman correlation directly",
+            "C) Generate PDF certificates",
+            "D) Select the value of k1"
+        ],
+        "answer_index": 0,
+        "explanation": "Tokenization converts raw text into individual terms that can be counted and used during ranking."
+    },
+
+    {
+        "id": 31,
+        "question": "What happens to tokens that belong to the built-in STOPWORDS set?",
+        "options": [
+            "A) They are filtered out before scoring",
+            "B) They are given the highest IDF",
+            "C) They are repeated five times",
+            "D) They become document titles"
+        ],
+        "answer_index": 0,
+        "explanation": "The experiment removes common stopwords before ranking because they generally provide little discriminative information."
+    },
+
+    {
+        "id": 32,
+        "question": "Why are stopwords commonly removed in information retrieval?",
+        "options": [
+            "A) They are often very common and provide limited discriminative information",
+            "B) They are always misspelled",
+            "C) They contain only numbers",
+            "D) They cannot be represented as strings"
+        ],
+        "answer_index": 0,
+        "explanation": "Very common words tend to occur across many documents and therefore contribute relatively little to distinguishing documents."
+    },
+
+    {
+        "id": 33,
+        "question": "In this experiment, what happens if a query term does not occur in any document?",
+        "options": [
+            "A) Its TF-IDF IDF contribution is treated as zero",
+            "B) Every document receives an infinite score",
+            "C) The application crashes automatically",
+            "D) The term becomes a stopword permanently"
+        ],
+        "answer_index": 0,
+        "explanation": "The implementation returns an IDF value of 0 for a term with document frequency zero in the TF-IDF calculation."
+    },
+
+    {
+        "id": 34,
+        "question": "What is document frequency (DF) used for when calculating IDF?",
+        "options": [
+            "A) To determine how widely a term is distributed across documents",
+            "B) To determine the number of query results displayed",
+            "C) To determine the value of b",
+            "D) To determine the average document title length"
+        ],
+        "answer_index": 0,
+        "explanation": "DF counts how many documents contain a term and is used to determine its inverse document frequency."
+    },
+
+    {
+        "id": 35,
+        "question": "Suppose two documents contain the same query term with the same frequency, but one document is much longer. With positive b, what can happen in BM25?",
+        "options": [
+            "A) The longer document can receive a stronger length-normalization penalty",
+            "B) The longer document is always ranked first",
+            "C) Document length is completely ignored",
+            "D) Both documents must receive identical BM25 scores"
+        ],
+        "answer_index": 0,
+        "explanation": "BM25 accounts for document length relative to avgdl, so a substantially longer document can be penalized when b is positive."
+    },
+
+    {
+        "id": 36,
+        "question": "What is the main difference between raw TF-IDF term-frequency handling and BM25 term-frequency handling in this experiment?",
+        "options": [
+            "A) Raw TF-IDF is unbounded while BM25 applies saturation",
+            "B) TF-IDF has saturation while BM25 does not",
+            "C) Neither method uses term frequency",
+            "D) Both methods completely ignore repeated terms"
+        ],
+        "answer_index": 0,
+        "explanation": "The classic raw TF-IDF implementation used here grows with term frequency, whereas BM25 introduces diminishing returns."
+    },
+
+    {
+        "id": 37,
+        "question": "Which BM25 parameter would you investigate when studying the effect of repeated occurrences of a query term?",
+        "options": [
+            "A) k1",
+            "B) b",
+            "C) avgdl only",
+            "D) Number of documents"
+        ],
+        "answer_index": 0,
+        "explanation": "k1 controls the shape and strength of term-frequency saturation in BM25."
+    },
+
+    {
+        "id": 38,
+        "question": "Which BM25 parameter would you investigate when studying the effect of document length?",
+        "options": [
+            "A) k1",
+            "B) b",
+            "C) TF only",
+            "D) Query vocabulary size"
+        ],
+        "answer_index": 1,
+        "explanation": "b controls the degree of document-length normalization."
+    },
+
+    {
+        "id": 39,
+        "question": "What is the purpose of the comparison chart in the simulation?",
+        "options": [
+            "A) To visually compare document scores or rankings produced by the two methods",
+            "B) To train the BM25 model",
+            "C) To create new documents",
+            "D) To calculate stopwords"
+        ],
+        "answer_index": 0,
+        "explanation": "The visualization helps students inspect how TF-IDF and BM25 score and rank the same documents."
+    },
+
+    {
+        "id": 40,
+        "question": "What does Spearman rank correlation measure in this experiment?",
+        "options": [
+            "A) How similarly two ranking methods order the same documents",
+            "B) The number of tokens in a document",
+            "C) The IDF of a query term",
+            "D) The value of k1"
+        ],
+        "answer_index": 0,
+        "explanation": "Spearman's rank correlation measures the similarity between two rankings based on the relative ordering of their items."
+    },
+
+    {
+        "id": 41,
+        "question": "If two ranking methods produce exactly the same ordering of documents, what would their Spearman rank correlation be?",
+        "options": [
+            "A) -1",
+            "B) 0",
+            "C) 1",
+            "D) 100"
+        ],
+        "answer_index": 2,
+        "explanation": "A Spearman correlation of 1 indicates identical ranking order."
+    },
+
+    {
+        "id": 42,
+        "question": "What would a negative Spearman rank correlation generally indicate?",
+        "options": [
+            "A) The two rankings tend to order documents in opposite directions",
+            "B) The two rankings are identical",
+            "C) There are no documents",
+            "D) Every document has the same length"
+        ],
+        "answer_index": 0,
+        "explanation": "A negative rank correlation indicates that higher positions in one ranking tend to correspond to lower positions in the other."
+    },
+
+    {
+        "id": 43,
+        "question": "Why is it useful to record multiple trials in this experiment?",
+        "options": [
+            "A) To observe how queries and BM25 parameters affect ranking results",
+            "B) To permanently change the BM25 formula",
+            "C) To delete previous results",
+            "D) To increase the number of stopwords"
+        ],
+        "answer_index": 0,
+        "explanation": "Recording multiple trials allows students to compare ranking behaviour under different queries and parameter settings."
+    },
+
+    {
+        "id": 44,
+        "question": "If k1 is changed while b remains constant, which aspect of BM25 are you primarily investigating?",
+        "options": [
+            "A) Term-frequency saturation",
+            "B) Document tokenization",
+            "C) PDF generation",
+            "D) Sidebar navigation"
+        ],
+        "answer_index": 0,
+        "explanation": "Changing k1 primarily changes how quickly the contribution from repeated term occurrences saturates."
+    },
+
+    {
+        "id": 45,
+        "question": "If b is changed while k1 remains constant, which aspect of BM25 are you primarily investigating?",
+        "options": [
+            "A) Document-length normalization",
+            "B) Query tokenization",
+            "C) Stopword vocabulary",
+            "D) Cosine vector dimensions only"
+        ],
+        "answer_index": 0,
+        "explanation": "Changing b changes the strength of document-length normalization."
+    },
+
+    {
+        "id": 46,
+        "question": "Why can TF-IDF and BM25 produce different rankings for the same query?",
+        "options": [
+            "A) They handle term frequency and document length differently",
+            "B) They always use different document collections",
+            "C) BM25 does not process text",
+            "D) TF-IDF cannot rank documents"
+        ],
+        "answer_index": 0,
+        "explanation": "The methods use different scoring formulations, particularly in how they handle repeated terms and document length."
+    },
+
+    {
+        "id": 47,
+        "question": "What happens to the BM25 score contribution when a query term has frequency zero in a document?",
+        "options": [
+            "A) That term contributes nothing to the document's BM25 score",
+            "B) The term receives the maximum possible score",
+            "C) The entire document is deleted",
+            "D) The term is counted as occurring once"
+        ],
+        "answer_index": 0,
+        "explanation": "If the query term does not occur in a document, its term frequency is zero and it contributes nothing to that document's BM25 score."
+    },
+
+    {
+        "id": 48,
+        "question": "What is the purpose of examining the term-contribution breakdown for a top BM25-ranked document?",
+        "options": [
+            "A) To understand which query terms contributed to its BM25 score",
+            "B) To change the document's original text",
+            "C) To remove all query terms",
+            "D) To calculate the PDF size"
+        ],
+        "answer_index": 0,
+        "explanation": "The contribution breakdown helps students understand how individual query terms contribute to the final BM25 score."
+    },
+
+    {
+        "id": 49,
+        "question": "What is a useful experimental approach when studying the effect of BM25 parameters?",
+        "options": [
+            "A) Change one parameter while keeping other important settings constant and compare rankings",
+            "B) Change every parameter randomly at the same time",
+            "C) Never compare the rankings",
+            "D) Delete the corpus after every trial"
+        ],
+        "answer_index": 0,
+        "explanation": "Changing one parameter at a time makes it easier to understand that parameter's effect on ranking behaviour."
+    },
+
+    {
+        "id": 50,
+        "question": "What is the main learning outcome of comparing BM25 with TF-IDF in this virtual laboratory?",
+        "options": [
+            "A) Understanding how different ranking formulations respond to term frequency, document length, and query terms",
+            "B) Learning how to build a neural network from scratch",
+            "C) Learning how to create a database",
+            "D) Learning how to compress PDF files"
+        ],
+        "answer_index": 0,
+        "explanation": "The experiment is designed to show how BM25 and TF-IDF rank the same documents differently and how BM25's k1 and b parameters affect those rankings."
     }
 ]
 
@@ -1323,52 +2082,180 @@ def render_simulation_section():
 
 
 def render_quiz_section():
-    """Renders Section 3: Assessment Quiz with Self-Grading and Feedback."""
-    st.header("Concept Assessment Quiz")
-    st.write("Answer the conceptual questions below to evaluate your understanding of BM25 and TF-IDF.")
+    """Renders the BM25 assessment quiz with 10 randomized questions."""
 
-    with st.form("lab_quiz_form"):
-        user_responses = {}
-        for q in QUIZ_QUESTIONS:
-            st.subheader(f"Question {q['id']}")
-            st.write(q["question"])
-            selected = st.radio(
-                label=f"Options for Question {q['id']}:",
-                options=q["options"],
-                index=st.session_state["quiz_answers"].get(q["id"], 0),
-                key=f"quiz_radio_{q['id']}",
-                label_visibility="collapsed"
-            )
+    st.header("Concept Assessment Quiz")
+
+    st.write(
+        "Answer all 10 questions below to evaluate your understanding "
+        "of BM25 and TF-IDF."
+    )
+
+    # --------------------------------------------------
+    # GET THE SAME 10 QUESTIONS FOR THIS SESSION
+    # --------------------------------------------------
+
+    quiz_questions = st.session_state["selected_quiz_questions"]
+
+    # --------------------------------------------------
+    # INITIALIZE QUIZ STATE
+    # --------------------------------------------------
+
+    if "quiz_answers" not in st.session_state:
+        st.session_state["quiz_answers"] = {}
+
+    if "quiz_submitted" not in st.session_state:
+        st.session_state["quiz_submitted"] = False
+
+    if "quiz_score" not in st.session_state:
+        st.session_state["quiz_score"] = 0
+
+    user_responses = {}
+
+    # --------------------------------------------------
+    # DISPLAY ONLY 10 QUESTIONS
+    # --------------------------------------------------
+
+    for question_number, q in enumerate(quiz_questions, start=1):
+
+        st.markdown(
+            f'<div class="quiz-question-number">'
+            f'QUESTION {question_number}'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            f'<div class="quiz-question-text">'
+            f'{q["question"]}'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+        # Check previous answer
+        previous_answer = st.session_state["quiz_answers"].get(q["id"])
+
+        if previous_answer is None:
+            default_index = None
+        else:
+            default_index = previous_answer
+
+        selected = st.radio(
+            label=f"Options for Question {question_number}",
+            options=q["options"],
+            index=default_index,
+            key=f"quiz_radio_{question_number}",
+            label_visibility="collapsed"
+        )
+
+        # Store answer only when selected
+        if selected is not None:
             user_responses[q["id"]] = q["options"].index(selected)
 
-        submitted = st.form_submit_button("Submit Quiz for Grading", type="primary")
+        st.write("")
+
+    # --------------------------------------------------
+    # ANSWER COUNT
+    # --------------------------------------------------
+
+    total_questions = len(quiz_questions)
+
+    answered_questions = len(user_responses)
+
+    all_answered = answered_questions == total_questions
+
+    # --------------------------------------------------
+    # STATUS
+    # --------------------------------------------------
+
+    if all_answered:
+
+        st.success(
+            f"All {total_questions} questions answered. "
+            "You can now submit the quiz."
+        )
+
+    else:
+
+        remaining = total_questions - answered_questions
+
+        st.info(
+            f"Please answer all questions before submitting. "
+            f"{answered_questions} / {total_questions} answered "
+            f"({remaining} remaining)."
+        )
+
+    # --------------------------------------------------
+    # SUBMIT BUTTON
+    # --------------------------------------------------
+
+    submitted = st.button(
+        "Submit Quiz for Grading",
+        type="primary",
+        width="stretch",
+        disabled=not all_answered
+    )
+
+    # --------------------------------------------------
+    # GRADING
+    # --------------------------------------------------
 
     if submitted:
-        score = 0
+
         st.session_state["quiz_answers"] = user_responses
+
         st.session_state["quiz_submitted"] = True
 
+        score = 0
+
         st.divider()
+
         st.subheader("Evaluation Results and Feedback")
-        for q in QUIZ_QUESTIONS:
+
+        # IMPORTANT:
+        # This loop ONLY grades questions.
+        # DO NOT create st.radio() here.
+
+        for question_number, q in enumerate(
+            quiz_questions,
+            start=1
+        ):
+
             user_ans = user_responses.get(q["id"])
+
             correct_ans = q["answer_index"]
+
             if user_ans == correct_ans:
+
                 score += 1
-                st.success(f"**Question {q['id']}: Correct!**\n\n_{q['explanation']}_")
+
+                st.success(
+                    f"**Question {question_number}: Correct!**\n\n"
+                    f"_{q['explanation']}_"
+                )
+
             else:
-                st.error(f"**Question {q['id']}: Incorrect.** (Your answer: {q['options'][user_ans]})\n\n"
-                         f"**Correct Answer:** {q['options'][correct_ans]}\n\n"
-                         f"**Reasoning:** _{q['explanation']}_")
 
+                st.error(
+                    f"**Question {question_number}: Incorrect.**\n\n"
+                    f"Your answer: "
+                    f"{q['options'][user_ans]}\n\n"
+                    f"**Correct Answer:** "
+                    f"{q['options'][correct_ans]}\n\n"
+                    f"**Reasoning:** "
+                    f"_{q['explanation']}_"
+                )
+
+        # Save score
         st.session_state["quiz_score"] = score
-        perc = (score / len(QUIZ_QUESTIONS)) * 100
-        st.info(f"Final Score: **{score} / {len(QUIZ_QUESTIONS)}** ({perc:.0f}%)")
 
-    elif st.session_state.get("quiz_submitted", False):
-        st.success(f"Quiz already submitted. Current score: **{st.session_state.get('quiz_score', 0)} / {len(QUIZ_QUESTIONS)}**")
+        percentage = (score / total_questions) * 100
 
-
+        st.info(
+            f"Final Score: **{score} / {total_questions}** "
+            f"({percentage:.0f}%)"
+        )
+        
 def render_report_section():
     """Renders Section 4: Dynamic Lab Report Generator with Guaranteed PDF Export."""
     st.header("Report Generation")
@@ -1403,7 +2290,10 @@ def render_report_section():
     st.subheader("Report Summary Preview")
     st.write(f"**Experiment:** {EXPERIMENT_CONFIG['title']}")
     st.write(f"**Student:** {student_name} | **ID:** {student_id} | **Date:** {lab_date}")
-    st.write(f"**Quiz Score:** {st.session_state.get('quiz_score', 0)} / {len(QUIZ_QUESTIONS)}")
+    st.write(
+    f"**Quiz Score:** "
+    f"{st.session_state.get('quiz_score', 0)} / {QUIZ_DISPLAY_COUNT}"
+)
 
     if not trials_df.empty:
         st.dataframe(trials_df, hide_index=True, width="stretch")
@@ -1416,7 +2306,7 @@ def render_report_section():
         date_str=str(lab_date),
         trials_df=trials_df,
         quiz_score=st.session_state.get("quiz_score", 0),
-        quiz_total=len(QUIZ_QUESTIONS),
+        quiz_total=QUIZ_DISPLAY_COUNT,
         student_notes=student_notes
     )
 
@@ -1459,7 +2349,7 @@ def render_certificate_section():
     st.success("You have completed the simulation and the quiz — you're eligible for a certificate!")
 
     quiz_score = st.session_state.get("quiz_score", 0)
-    quiz_total = len(QUIZ_QUESTIONS)
+    quiz_total = QUIZ_DISPLAY_COUNT
     perc = int((quiz_score / quiz_total) * 100) if quiz_total else 0
 
     m1, m2 = st.columns(2)
@@ -1545,68 +2435,147 @@ def render_certificate_section():
 # ======================================================================================
 
 def init_session_state():
-    """Initializes Streamlit session state variables."""
+
     if "trials" not in st.session_state:
         st.session_state["trials"] = []
+
     if "quiz_answers" not in st.session_state:
         st.session_state["quiz_answers"] = {}
+
     if "quiz_submitted" not in st.session_state:
         st.session_state["quiz_submitted"] = False
+
     if "quiz_score" not in st.session_state:
         st.session_state["quiz_score"] = 0
+
+    # Randomly select 10 questions ONCE per session
+    if "selected_quiz_questions" not in st.session_state:
+        st.session_state["selected_quiz_questions"] = random.sample(
+            QUIZ_QUESTIONS,
+            min(10, len(QUIZ_QUESTIONS))
+        )
+
     if "student_info" not in st.session_state:
         st.session_state["student_info"] = {
             "name": "Student Name",
             "id": "EXP-001",
             "date": str(datetime.now().date())
         }
+
     if "student_notes" not in st.session_state:
         st.session_state["student_notes"] = ""
+
     if "certificate_full_name" not in st.session_state:
         st.session_state["certificate_full_name"] = ""
+
     if "certificate_generated" not in st.session_state:
         st.session_state["certificate_generated"] = False
+    if "selected_quiz_questions" not in st.session_state:
+        st.session_state["selected_quiz_questions"] = random.sample(
+        QUIZ_QUESTIONS,
+        10
+    )
 
 
 def main():
     st.set_page_config(
         page_title="BM25 Based Document Ranking - Virtual Lab",
-        page_icon=None,
+        page_icon="📚",
         layout="wide"
     )
+    load_custom_css()
 
     init_session_state()
 
     st.title(EXPERIMENT_CONFIG["title"])
 
-    section = st.sidebar.radio(
-        "Lab Navigator",
-        options=["Purpose", "Theory", "Simulation", "Quiz", "Report Generation", "Certificate", "References"]
+st.sidebar.markdown(
+    """
+    <div style="
+        font-size: 1.35rem;
+        font-weight: 750;
+        color: white;
+        margin-bottom: 0.2rem;
+    ">
+        📚 BM25 Virtual Lab
+    </div>
+
+    <div style="
+        font-size: 0.8rem;
+        color: #94a3b8;
+        margin-bottom: 1rem;
+    ">
+        Document Ranking Experiment
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+section = st.sidebar.radio(
+    "Lab Navigator",
+    options=[
+        "Purpose",
+        "Theory",
+        "Simulation",
+        "Quiz",
+        "Report Generation",
+        "Certificate",
+        "References"
+    ],
+    label_visibility="collapsed"
+)
+
+st.sidebar.divider()
+
+st.sidebar.subheader("Progress Tracker")
+
+quiz_status = (
+        "Done"
+        if st.session_state.get("quiz_submitted", False)
+        else "Pending"
     )
 
-    st.sidebar.divider()
-    st.sidebar.subheader("Progress Tracker")
-    quiz_status = "Done" if st.session_state.get("quiz_submitted", False) else "Pending"
-    st.sidebar.write(f"- **Quiz Status:** {quiz_status}")
-    if st.session_state.get("quiz_submitted", False):
-        st.sidebar.write(f"- **Quiz Score:** `{st.session_state.get('quiz_score', 0)} / {len(QUIZ_QUESTIONS)}`")
-    st.sidebar.write(f"- **Trials Recorded:** {len(st.session_state.get('trials', []))}")
-    cert_status = "Eligible" if is_lab_completed() else "Not yet eligible"
-    st.sidebar.write(f"- **Certificate:** {cert_status}")
+st.sidebar.write(f"- **Quiz Status:** {quiz_status}")
 
-    if section == "Purpose":
+if st.session_state.get("quiz_submitted", False):
+        quiz_score = st.session_state.get("quiz_score", 0)
+
+        st.sidebar.write(
+    f"- **Quiz Score:** "
+    f"`{st.session_state.get('quiz_score', 0)} / {QUIZ_DISPLAY_COUNT}`"
+)
+
+trials_recorded = len(
+        st.session_state.get("trials", [])
+    )
+
+st.sidebar.write(
+        f"- **Trials Recorded:** {trials_recorded}"
+    )
+
+cert_status = (
+        "Eligible"
+        if is_lab_completed()
+        else "Not yet eligible"
+    )
+
+st.sidebar.write(
+        f"- **Certificate:** {cert_status}"
+    )
+
+if section == "Purpose":
         render_purpose_section()
-    elif section == "Theory":
+elif section == "Theory":
         render_theory_section()
-    elif section == "Simulation":
+elif section == "Simulation":
         render_simulation_section()
-    elif section == "Quiz":
+elif section == "Quiz":
         render_quiz_section()
-    elif section == "Report Generation":
+elif section == "Report Generation":
         render_report_section()
-    elif section == "Certificate":
+elif section == "Certificate":
         render_certificate_section()
-    elif section == "References":
+elif section == "References":
         render_references_section()
 
 
